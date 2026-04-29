@@ -1,20 +1,42 @@
-const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const http = require('http');
+const https = require('https');
 
-const app = express();
-const SUPABASE_URL = 'https://yyohojhvayfcwiqrdiqf.supabase.co';
+const SUPABASE_HOST = 'yyohojhvayfcwiqrdiqf.supabase.co';
 
-app.use('/', createProxyMiddleware({
-    target: SUPABASE_URL,
-    changeOrigin: true,
-    on: {
-        proxyRes: (proxyRes) => {
-            proxyRes.headers['access-control-allow-origin'] = '*';
-            proxyRes.headers['access-control-allow-methods'] = 'GET,POST,PUT,DELETE,PATCH,OPTIONS';
-            proxyRes.headers['access-control-allow-headers'] = '*';
+const server = http.createServer((req, res) => {
+    // Проксируем запрос к Supabase
+    const options = {
+        hostname: SUPABASE_HOST,
+        path: req.url,
+        method: req.method,
+        headers: {
+            ...req.headers,
+            host: SUPABASE_HOST
         }
+    };
+
+    const proxyReq = https.request(options, (proxyRes) => {
+        // CORS заголовки
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', '*');
+        
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
+    });
+
+    proxyReq.on('error', (err) => {
+        console.error('Ошибка прокси:', err);
+        res.writeHead(500);
+        res.end('Proxy error');
+    });
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        req.pipe(proxyReq);
+    } else {
+        proxyReq.end();
     }
-}));
+});
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Прокси запущен на порту', PORT));
+server.listen(PORT, () => console.log('Прокси на порту', PORT));
